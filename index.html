@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stockverse — Modern Virtual Stock Trading Simulator</title>
+    <!-- Modern Fintech Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+    <!-- Main Stylesheet -->
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
+</head>
+<body>
+
+    <!-- 1. Top Real-time Stock Ticker Tape -->
+    <div class="ticker-tape-container">
+        <div class="ticker-tape" id="tickerTape">
+            <!-- Dynamically populated ticker items -->
+        </div>
+    </div>
+
+    <!-- 2. Header & Main Navigation Bar -->
+    <header class="header">
+        <div class="container">
+            <nav class="navbar">
+                <!-- Branding -->
+                <a href="#" class="brand-wrapper" onclick="return false;">
+                    <div class="brand-logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                            <polyline points="17 6 23 6 23 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="brand-text-group">
+                        <span class="brand-title">Stockverse</span>
+                        <span class="brand-subtitle">Virtual Stock Trading Simulator</span>
+                    </div>
+                </a>
+
+                <!-- Navigation Tabs -->
+                <div class="nav-tabs">
+                    <button class="nav-tab-btn active" data-view="dashboard">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"></rect><rect x="14" y="3" width="7" height="5"></rect><rect x="14" y="12" width="7" height="9"></rect><rect x="3" y="16" width="7" height="5"></rect></svg>
+                        Dashboard
+                    </button>
+                    <button class="nav-tab-btn" data-view="market">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"></line><line x1="18" y1="20" x2="18" y2="4"></line><line x1="6" y1="20" x2="6" y2="16"></line></svg>
+                        Stocks & Watchlist
+                    </button>
+                    <button class="nav-tab-btn" data-view="portfolio">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                        Portfolio
+                    </button>
+                    <button class="nav-tab-btn" data-view="transactions">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"></polyline><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"></path></svg>
+                        Transactions
+                    </button>
+                </div>
+
+                <!-- Header Stats & Quick Actions -->
+                <div class="header-actions">
+                    <div class="market-status-pill">
+                        <span class="status-dot"></span>
+                        <span id="marketStatusText">NSE/BSE Live</span>
+                    </div>
+
+                    <div class="capital-badge">
+                        <span class="capital-label">Virtual Capital</span>
+                        <span class="capital-amount" id="headerCash">₹1,00,000.00</span>
+                    </div>
+
+                    <!-- User Account / Login Pill -->
+                    <div class="user-account-badge" id="userAccountBtn" title="Click to view Account / Switch User">
+                        <div class="user-avatar-circle" id="userAvatarText">T</div>
+                        <div class="user-info-text">
+                            <span class="user-name-display" id="userDisplayName">trader</span>
+                            <span class="user-status-role">Virtual Trader</span>
+                        </div>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text-muted);"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+
+                    <button class="btn btn-sm btn-ghost" id="btnLogoutBtn" title="Sign Out or Switch Account">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    </button>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 3. Main Content Container -->
+    <main class="main-content container">
+
+        <!-- Simulation Toolbar across all views -->
+        <div class="simulation-toolbar">
+            <div class="toolbar-info">
+                <div class="day-counter">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span id="tradingDayBadge">Trading Day #1</span>
+                </div>
+                <div style="font-size: 13px; color: var(--text-secondary);">
+                    Initial Capital: <strong style="color: var(--text-primary);">₹1,00,000.00</strong> (Zero Financial Risk)
+                </div>
+            </div>
+
+            <div class="toolbar-controls">
+                <button class="btn btn-sm btn-primary" id="btnSimulateDay" title="Simulate a new day of stock market price changes">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Next Trading Day
+                </button>
+                <button class="btn btn-sm btn-secondary" id="btnAutoTick" title="Toggle automatic price fluctuations every 4 seconds">
+                    <span>⚡ Auto-Tick: OFF</span>
+                </button>
+                <button class="btn btn-sm btn-secondary" id="btnResetAccount" title="Reset account balance back to ₹1,00,000">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 2v6h6"></path><path d="M21 12A9 9 0 0 0 6 5.3L3 8"></path><path d="M21 22v-6h-6"></path><path d="M3 12a9 9 0 0 0 15 6.7l3-2.7"></path></svg>
+                    Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- ====================================================================
+             VIEW 1: DASHBOARD
+             ==================================================================== -->
+        <section class="view-section active" id="view-dashboard">
+            <!-- Key Metric Cards Grid -->
+            <div class="metrics-grid">
+                <!-- Available Cash -->
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-title">Available Cash Balance</span>
+                        <div class="metric-icon-wrap success">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="metricCash">₹1,00,000.00</div>
+                    <div class="metric-footer">
+                        <span class="metric-badge neutral">Liquid Funds</span>
+                        <span class="metric-subtext">Ready for trading</span>
+                    </div>
+                </div>
+
+                <!-- Portfolio Value -->
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-title">Portfolio Holdings Value</span>
+                        <div class="metric-icon-wrap primary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="metricPortfolioVal">₹0.00</div>
+                    <div class="metric-footer">
+                        <span class="metric-badge neutral">Current Value</span>
+                        <span class="metric-subtext">Active investments</span>
+                    </div>
+                </div>
+
+                <!-- Net Worth -->
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-title">Total Net Worth</span>
+                        <div class="metric-icon-wrap warning">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="metricNetWorth">₹1,00,000.00</div>
+                    <div class="metric-footer">
+                        <span class="metric-badge neutral" id="metricReturnBadge">+0.00%</span>
+                        <span class="metric-subtext">Total account valuation</span>
+                    </div>
+                </div>
+
+                <!-- Unrealized P&L -->
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-title">Total Profit / Loss</span>
+                        <div class="metric-icon-wrap" id="metricPnLIconWrap">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+                        </div>
+                    </div>
+                    <div class="metric-value" id="metricPnL">₹0.00</div>
+                    <div class="metric-footer">
+                        <span class="metric-badge neutral" id="metricPnLBadge">0.00%</span>
+                        <span class="metric-subtext">Unrealized return</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard 2-Column Split -->
+            <div class="grid-2col">
+                <!-- Left: Recent Activity & Quick Market Overview -->
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <!-- Top Movers / Gainers Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline></svg>
+                                Market Highlights (Top Gainers)
+                            </div>
+                            <button class="btn btn-sm btn-ghost" onclick="document.querySelector('.nav-tab-btn[data-view=market]').click()">
+                                View All Stocks →
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="topMoversContainer">
+                                <!-- Rendered dynamically -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Transactions Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                                Recent Trade Transactions
+                            </div>
+                            <button class="btn btn-sm btn-ghost" onclick="document.querySelector('.nav-tab-btn[data-view=transactions]').click()">
+                                Full History →
+                            </button>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="modern-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date & Time</th>
+                                        <th>Action</th>
+                                        <th>Symbol</th>
+                                        <th>Shares</th>
+                                        <th>Total Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboardRecentTxns">
+                                    <!-- Rendered dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Asset Allocation Donut Chart & Profile Card -->
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                                Portfolio Allocation
+                            </div>
+                        </div>
+                        <div class="card-body" style="text-align: center;">
+                            <canvas id="portfolioDonutChart" width="280" height="230" style="max-width: 100%; display: block; margin: 0 auto;"></canvas>
+                            <div style="margin-top: 14px; font-size: 12px; color: var(--text-secondary);">
+                                Visual breakdown of virtual cash balance versus equities held.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Simulator Guide Card -->
+                    <div class="card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(17, 24, 39, 0.8) 100%);">
+                        <div class="card-body">
+                            <h4 style="font-size: 15px; margin-bottom: 8px; color: #a5b4fc; display: flex; align-items: center; gap: 6px;">
+                                💡 How to Trade in Stockverse
+                            </h4>
+                            <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px;">
+                                1. Explore stocks from the <strong>Stocks & Watchlist</strong> tab.<br>
+                                2. Click <strong>Buy</strong> to invest your virtual capital.<br>
+                                3. Click <strong>Next Trading Day</strong> to simulate price shifts.<br>
+                                4. Monitor unrealized profit/loss in your <strong>Portfolio</strong> and sell whenever you're ready!
+                            </p>
+                            <button class="btn btn-sm btn-primary" style="width: 100%;" onclick="document.querySelector('.nav-tab-btn[data-view=market]').click()">
+                                Start Trading Now
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====================================================================
+             VIEW 2: STOCKS WATCHLIST & MARKET
+             ==================================================================== -->
+        <section class="view-section" id="view-market">
+            <div class="filter-bar">
+                <div class="search-input-wrapper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="stockSearchInput" class="search-input" placeholder="Search by stock symbol, company name, or sector...">
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <select id="sectorFilterSelect" class="filter-select">
+                        <option value="All">All Sectors</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Stocks Catalog Table -->
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th>Stock / Company</th>
+                                <th>Sector</th>
+                                <th>Current Price</th>
+                                <th>24h Change</th>
+                                <th>Day Range (L - H)</th>
+                                <th>30-Day Trend</th>
+                                <th>Trade Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stocksTableBody">
+                            <!-- Rendered dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====================================================================
+             VIEW 3: PORTFOLIO HOLDINGS
+             ==================================================================== -->
+        <section class="view-section" id="view-portfolio">
+            <!-- Portfolio Summary Cards -->
+            <div class="metrics-grid" style="margin-bottom: 24px;">
+                <div class="metric-card">
+                    <div class="metric-title">Total Capital Invested</div>
+                    <div class="metric-value" id="portfolioTotalInvested">₹0.00</div>
+                    <div class="metric-subtext">Sum of (Qty × Avg Buy Price)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Current Portfolio Valuation</div>
+                    <div class="metric-value" id="portfolioCurrentVal">₹0.00</div>
+                    <div class="metric-subtext">Sum of (Qty × Current Price)</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-title">Total Unrealized Returns</div>
+                    <div class="metric-value" id="portfolioTotalReturns">₹0.00 (0.00%)</div>
+                    <div class="metric-subtext">Net gain/loss across all holdings</div>
+                </div>
+            </div>
+
+            <!-- Portfolio Holdings Table Card -->
+            <div class="card" id="portfolioTableCard">
+                <div class="card-header">
+                    <div class="card-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path></svg>
+                        Your Active Stock Holdings
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th>Stock</th>
+                                <th>Shares Held</th>
+                                <th>Avg Buy Price</th>
+                                <th>Current Price</th>
+                                <th>Invested Value</th>
+                                <th>Current Value</th>
+                                <th>Profit / Loss</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portfolioTableBody">
+                            <!-- Rendered dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Empty State for Portfolio -->
+            <div class="card empty-state" id="portfolioEmptyState" style="display: none;">
+                <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+                </svg>
+                <h3 class="empty-title">No Stock Holdings Yet</h3>
+                <p class="empty-desc">
+                    Your portfolio is currently empty. Use your virtual capital of ₹1,00,000 to purchase shares and start tracking profits!
+                </p>
+                <button class="btn btn-primary" onclick="document.querySelector('.nav-tab-btn[data-view=market]').click()">
+                    Explore Stock Catalog
+                </button>
+            </div>
+        </section>
+
+        <!-- ====================================================================
+             VIEW 4: TRANSACTIONS HISTORY
+             ==================================================================== -->
+        <section class="view-section" id="view-transactions">
+            <div class="filter-bar">
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-sm btn-secondary txn-filter-btn active" data-filter="ALL">All Transactions</button>
+                    <button class="btn btn-sm btn-secondary txn-filter-btn" data-filter="BUY">Buy Orders</button>
+                    <button class="btn btn-sm btn-secondary txn-filter-btn" data-filter="SELL">Sell Orders</button>
+                </div>
+
+                <div>
+                    <button class="btn btn-sm btn-secondary" id="btnExportTxns">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        Export CSV
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="table-responsive">
+                    <table class="modern-table">
+                        <thead>
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Order ID</th>
+                                <th>Type</th>
+                                <th>Symbol</th>
+                                <th>Quantity</th>
+                                <th>Execution Price</th>
+                                <th>Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txnsTableBody">
+                            <!-- Rendered dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 4. Interactive Buy / Sell Order Modal -->
+    <div class="modal-overlay" id="tradeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title" id="tradeModalTitle">Execute Stock Order</div>
+                <button class="modal-close" id="closeTradeModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Stock Header Card -->
+                <div class="stock-picker-header">
+                    <div>
+                        <div class="stock-picker-symbol" id="tradeStockSymbol">RELIANCE</div>
+                        <div style="font-size: 12px; color: var(--text-muted);" id="tradeStockName">Reliance Industries Ltd</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div class="stock-picker-price" id="tradeStockPrice">₹2,942.50</div>
+                        <span class="change-pill up" id="tradeStockChange">▲ +0.94%</span>
+                    </div>
+                </div>
+
+                <!-- Buy / Sell Toggle Tabs -->
+                <div class="trade-tabs">
+                    <button class="trade-tab-btn buy active" id="tradeBuyTab">BUY SHARES</button>
+                    <button class="trade-tab-btn sell" id="tradeSellTab">SELL SHARES</button>
+                </div>
+
+                <!-- Quantity Input -->
+                <div class="form-group">
+                    <label class="form-label" for="tradeQuantityInput">Quantity (Number of Shares)</label>
+                    <input type="number" id="tradeQuantityInput" class="form-control" value="1" min="1" step="1">
+                    
+                    <div class="quick-qty-group">
+                        <div class="qty-chip" data-val="1">+1</div>
+                        <div class="qty-chip" data-val="5">+5</div>
+                        <div class="qty-chip" data-val="10">+10</div>
+                        <div class="qty-chip" data-val="50">+50</div>
+                        <div class="qty-chip" data-val="max">MAX</div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Financial Summary -->
+                <div class="trade-summary-card">
+                    <div class="summary-row" id="tradeAvailCashRow">
+                        <span>Available Cash Balance:</span>
+                        <span id="tradeAvailCashVal" style="color: var(--text-primary); font-weight: 600;">₹1,00,000.00</span>
+                    </div>
+                    <div class="summary-row" id="tradeAvailSharesRow" style="display: none;">
+                        <span>Available Shares Held:</span>
+                        <span id="tradeAvailSharesVal" style="color: var(--text-primary); font-weight: 600;">0 shares</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Estimated Brokerage & Taxes:</span>
+                        <span style="color: var(--success); font-weight: 600;">₹0.00 (Simulator Free)</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>Estimated Total Amount:</span>
+                        <span id="tradeEstTotalVal" style="color: #ffffff;">₹2,942.50</span>
+                    </div>
+                    <div class="summary-row" style="margin-top: 8px; font-size: 12px;">
+                        <span id="tradeRemainingLabel">Estimated Balance After Trade:</span>
+                        <span id="tradeEstRemainingVal" style="font-weight: 600;">₹97,057.50</span>
+                    </div>
+                </div>
+
+                <!-- Validation Feedback Box -->
+                <div class="validation-box" id="tradeValidationBox"></div>
+
+                <!-- Execute Button -->
+                <button class="btn btn-lg btn-success" id="btnExecuteTrade" style="width: 100%;">
+                    Confirm Purchase
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. Interactive Stock Chart & Details Modal -->
+    <div class="modal-overlay" id="chartModal">
+        <div class="modal-content" style="max-width: 720px;">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="chartModalTitle">RELIANCE - Reliance Industries Ltd</div>
+                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+                        <span style="font-size: 18px; font-weight: 800;" id="chartModalPrice">₹2,942.50</span>
+                        <span class="change-pill up" id="chartModalChange">▲ +0.94%</span>
+                    </div>
+                </div>
+                <button class="modal-close" id="closeChartModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Time Range Buttons -->
+                <div class="chart-time-selectors">
+                    <button class="time-btn" data-range="7D">7 Days</button>
+                    <button class="time-btn" data-range="14D">14 Days</button>
+                    <button class="time-btn active" data-range="30D">30 Days</button>
+                </div>
+
+                <!-- Canvas Chart -->
+                <div class="chart-container-large">
+                    <canvas id="detailedStockCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+                </div>
+
+                <!-- Key Fundamentals & Stats Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 20px;">
+                    <div style="background: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">Day High</div>
+                        <div style="font-weight: 700; color: var(--success);" id="chartModalHigh">₹2,965.80</div>
+                    </div>
+                    <div style="background: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">Day Low</div>
+                        <div style="font-weight: 700; color: var(--danger);" id="chartModalLow">₹2,908.20</div>
+                    </div>
+                    <div style="background: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">Trading Volume</div>
+                        <div style="font-weight: 700;" id="chartModalVolume">4,820,150</div>
+                    </div>
+                    <div style="background: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">P/E Ratio</div>
+                        <div style="font-weight: 700;" id="chartModalPe">27.4</div>
+                    </div>
+                    <div style="background: var(--bg-card-subtle); padding: 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                        <div style="font-size: 11px; color: var(--text-muted);">Market Cap</div>
+                        <div style="font-weight: 700;" id="chartModalMcap">₹19.9 Lakh Cr</div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons inside Modal -->
+                <div style="display: flex; gap: 12px;">
+                    <button class="btn btn-success" id="chartModalBuyBtn" style="flex: 1;">
+                        Buy Shares
+                    </button>
+                    <button class="btn btn-danger" id="chartModalSellBtn" style="flex: 1;">
+                        Sell Shares
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. User Authentication Modal (Login & Registration) -->
+    <div class="modal-overlay" id="authModal">
+        <div class="modal-content" style="max-width: 440px;">
+            <div class="modal-header">
+                <div class="modal-title" id="authModalTitle">Trader Login</div>
+                <button class="modal-close" id="closeAuthModal">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- Login / Register Switch Tabs -->
+                <div class="auth-tabs">
+                    <button class="auth-tab-btn active" id="authTabLogin">Sign In</button>
+                    <button class="auth-tab-btn" id="authTabRegister">Create Account</button>
+                </div>
+
+                <div class="auth-card-hint" id="authHint">
+                    🔑 <strong>Default Account:</strong> Username: <code>trader</code> | Password: <code>123</code><br>
+                    Or create your own personal account with <strong>₹1,00,000</strong> virtual capital!
+                </div>
+
+                <!-- Form Fields -->
+                <div class="form-group" id="authNameGroup" style="display: none;">
+                    <label class="form-label" for="authFullName">Your Full Name</label>
+                    <input type="text" id="authFullName" class="form-control" placeholder="e.g. Aryan Sharma">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="authUsername">Username</label>
+                    <input type="text" id="authUsername" class="form-control" placeholder="Enter username (e.g. trader)">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="authPassword">Password</label>
+                    <input type="password" id="authPassword" class="form-control" placeholder="Enter password (e.g. 123)">
+                </div>
+
+                <div class="validation-box" id="authValidationBox"></div>
+
+                <div class="auth-btn-row">
+                    <button class="btn btn-lg btn-primary" id="btnSubmitAuth" style="width: 100%;">
+                        Sign In to Stockverse
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. Toast Notifications Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 7. Modern Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 700; color: var(--text-primary);">Stockverse</span>
+                <span>• Virtual Stock Trading Simulator</span>
+            </div>
+            <div style="color: var(--text-muted);">
+                Architected with C Backend (Business Logic & CGI) + Modern Vanilla JS Frontend
+            </div>
+        </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script src="js/data.js"></script>
+    <script src="js/engine.js"></script>
+    <script src="js/charts.js"></script>
+    <script src="js/cgi-bridge.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
