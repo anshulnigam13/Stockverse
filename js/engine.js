@@ -112,6 +112,7 @@ class TradingEngine {
 
             let updated = false;
             Object.keys(cloudUsers).forEach(k => {
+                if (k === 'trader') return; // Demo sandbox is kept local per device
                 const cu = cloudUsers[k];
                 if (cu && cu.username) {
                     const key = this.cleanKey(cu.username);
@@ -143,7 +144,7 @@ class TradingEngine {
     async fetchUserFromCloud(username) {
         try {
             const key = this.cleanKey(username);
-            if (!key) return null;
+            if (!key || key === 'trader') return null;
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 6000);
@@ -167,7 +168,7 @@ class TradingEngine {
     async pushUserToCloud(username = null) {
         try {
             const key = this.cleanKey(username || this.currentUsername);
-            if (!key || !this.users[key]) return false;
+            if (!key || !this.users[key] || key === 'trader') return false; // Demo trader is private sandbox per device, only real accounts push to cloud
 
             const targetUser = this.users[key];
             const payload = {
@@ -307,6 +308,13 @@ class TradingEngine {
         }
 
         const key = this.cleanKey(username);
+
+        if (key === 'trader') {
+            return {
+                success: false,
+                message: "Username 'trader' is reserved for the Demo Sandbox. Please choose your own personal username."
+            };
+        }
 
         // 1. Check local
         if (this.users[key]) {

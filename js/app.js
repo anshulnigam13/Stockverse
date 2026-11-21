@@ -1412,61 +1412,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Mobile / Cross-Device Sync Event Handlers
-    const btnCopySyncLink = document.getElementById('btnCopySyncLink');
-    if (btnCopySyncLink) {
-        btnCopySyncLink.addEventListener('click', () => {
-            const payload = engine.getAccountSyncPayload();
-            if (!payload) {
-                showToast('No Active Account', 'Please sign in to an account first to sync.', 'error');
-                return;
-            }
-            const base = window.location.origin + window.location.pathname;
-            const syncUrl = `${base}?sync=${payload}`;
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(syncUrl).then(() => {
-                    showToast('📱 Mobile Sync Link Copied!', 'Send or open this link on your mobile phone to instantly transfer your account.', 'success', 8000);
-                }).catch(() => {
-                    prompt('Copy your Mobile Sync Link:', syncUrl);
-                });
-            } else {
-                prompt('Copy your Mobile Sync Link:', syncUrl);
-            }
-        });
-    }
-
-    const btnToggleImport = document.getElementById('btnToggleImport');
-    const importBox = document.getElementById('importAccountBox');
-    if (btnToggleImport && importBox) {
-        btnToggleImport.addEventListener('click', () => {
-            importBox.style.display = importBox.style.display === 'none' ? 'block' : 'none';
-        });
-    }
-
-    const btnDoImportSync = document.getElementById('btnDoImportSync');
-    const importInput = document.getElementById('importSyncKeyInput');
-    if (btnDoImportSync && importInput) {
-        btnDoImportSync.addEventListener('click', () => {
-            let val = importInput.value.trim();
-            if (!val) {
-                showToast('Empty Input', 'Please paste a valid sync link or code.', 'error');
-                return;
-            }
-            if (val.includes('sync=')) {
-                const match = val.match(/sync=([^&]+)/);
-                if (match) val = match[1];
-            }
-            const res = engine.importAccountPayload(val);
-            if (res.success) {
-                showToast('Account Imported', res.message, 'success', 6000);
-                closeAuthModal();
-                renderAll();
-            } else {
-                showToast('Import Failed', res.message, 'error');
-            }
-        });
-    }
-
     // Export Transactions to CSV
     const btnExportTxns = document.getElementById('btnExportTxns');
     if (btnExportTxns) {
