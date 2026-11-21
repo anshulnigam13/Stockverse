@@ -757,7 +757,19 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.tradeStockChange.className = `change-pill ${change >= 0 ? 'up' : 'down'}`;
         elements.tradeStockChange.textContent = `${change >= 0 ? '▲' : '▼'} ${formatPercent(changePct)}`;
 
-        elements.tradeQuantityInput.value = 1;
+        const holding = engine.getHolding(stock.symbol);
+        const ownedQty = holding ? holding.quantity : 0;
+
+        if (type === 'sell') {
+            elements.tradeQuantityInput.min = ownedQty > 0 ? '1' : '0';
+            elements.tradeQuantityInput.max = String(ownedQty);
+            elements.tradeQuantityInput.value = ownedQty > 0 ? 1 : 0;
+        } else {
+            elements.tradeQuantityInput.min = '1';
+            elements.tradeQuantityInput.removeAttribute('max');
+            elements.tradeQuantityInput.value = 1;
+        }
+
         setTradeTab(type);
         updateTradeCalculations();
 
@@ -779,16 +791,33 @@ document.addEventListener('DOMContentLoaded', () => {
         elements.btnExecuteTrade.textContent = type === 'buy' ? 'Confirm Purchase' : 'Confirm Sale';
         elements.btnExecuteTrade.className = `btn btn-lg ${type === 'buy' ? 'btn-success' : 'btn-danger'}`;
 
+        const holding = selectedStock ? engine.getHolding(selectedStock.symbol) : null;
+        const ownedQty = holding ? holding.quantity : 0;
+
         if (type === 'buy') {
             elements.tradeAvailCashRow.style.display = 'flex';
             elements.tradeAvailSharesRow.style.display = 'none';
             elements.tradeRemainingLabel.textContent = 'Estimated Balance After Trade:';
-            // Hide sell P&L card when in buy mode
             if (elements.tradeSellPnLCard) elements.tradeSellPnLCard.style.display = 'none';
+            elements.tradeQuantityInput.removeAttribute('max');
+            elements.tradeQuantityInput.min = '1';
+            if (parseInt(elements.tradeQuantityInput.value, 10) === 0) {
+                elements.tradeQuantityInput.value = 1;
+            }
         } else {
             elements.tradeAvailCashRow.style.display = 'none';
             elements.tradeAvailSharesRow.style.display = 'flex';
             elements.tradeRemainingLabel.textContent = 'Cash Proceeds From Sale:';
+            elements.tradeQuantityInput.max = String(ownedQty);
+            elements.tradeQuantityInput.min = ownedQty > 0 ? '1' : '0';
+            let currentVal = parseInt(elements.tradeQuantityInput.value, 10) || 0;
+            if (currentVal > ownedQty) {
+                elements.tradeQuantityInput.value = ownedQty;
+            } else if (currentVal === 0 && ownedQty > 0) {
+                elements.tradeQuantityInput.value = 1;
+            } else if (ownedQty === 0) {
+                elements.tradeQuantityInput.value = 0;
+            }
         }
 
         updateTradeCalculations();
@@ -796,18 +825,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateTradeCalculations() {
         if (!selectedStock) return;
-        const qty = parseInt(elements.tradeQuantityInput.value, 10) || 0;
-        const price = selectedStock.price;
-        const grossVal = Number((qty * price).toFixed(2));
         const holding = engine.getHolding(selectedStock.symbol);
         const ownedQty = holding ? holding.quantity : 0;
+        let qty = parseInt(elements.tradeQuantityInput.value, 10);
+        const price = selectedStock.price;
 
+        // Hard clamping & limit enforcement for sell mode
+        if (currentTradeType === 'sell') {
+            elements.tradeQuantityInput.max = String(ownedQty);
+            elements.tradeQuantityInput.min = ownedQty > 0 ? '1' : '0';
+
+            if (ownedQty === 0) {
+                elements.tradeQuantityInput.value = 0;
+                qty = 0;
+                elements.tradeValidationBox.className = 'validation-box error';
+                elements.tradeValidationBox.style.display = 'block';
+                elements.tradeValidationBox.innerHTML = `❌ <strong>No Shares Owned:</strong> You do not hold any shares of ${selectedStock.symbol} in your portfolio. Purchase shares first.`;
+                elements.btnExecuteTrade.disabled = true;
+            } else if (isNaN(qty) || qty < 1) {
+                elements.tradeQuantityInput.value = 1;
+                qty = 1;
+                elements.tradeValidationBox.style.display = 'none';
+                elements.btnExecuteTrade.disabled = false;
+            } else if (qty > ownedQty) {
+                // HARD LIMIT: clamp input value directly to ownedQty
+                elements.tradeQuantityInput.value = ownedQty;
+                qty = ownedQty;
+                elements.tradeValidationBox.className = 'validation-box error';
+                elements.tradeValidationBox.style.display = 'block';
+                elements.tradeValidationBox.innerHTML = `⚠️ <strong>Limit Enforced:</strong> You currently own <strong>${ownedQty} share(s)</strong> of ${selectedStock.symbol}. Selling quantity has been capped to your holding limit of <strong>${ownedQty}</strong>.`;
+                elements.btnExecuteTrade.disabled = false;
+            } else {
+                elements.tradeValidationBox.style.display = 'none';
+                elements.btnExecuteTrade.disabled = false;
+            }
+        } else {
+            // Buy mode
+            if (isNaN(qty) || qty < 1) {
+                qty = 1;
+                elements.tradeQuantityInput.value = 1;
+            }
+            elements.tradeValidationBox.style.display = 'none';
+        }
+
+        const grossVal = Number((qty * price).toFixed(2));
         elements.tradeAvailCashVal.textContent = formatINR(engine.user.cash_balance);
         elements.tradeAvailSharesVal.textContent = `${ownedQty} share(s)`;
 
         // Calculate real Indian delivery taxes & friction
         let grossPnL = 0;
-        if (currentTradeType === 'sell' && holding) {
+        if (currentTradeType === 'sell' && holding && qty > 0) {
             grossPnL = Number(((price - holding.average_buy_price) * qty).toFixed(2));
         }
 
@@ -837,13 +904,27 @@ document.addEventListener('DOMContentLoaded', () => {
             const remaining = Number((engine.user.cash_balance - netTotal).toFixed(2));
             if (elements.tradeRemainingLabel) elements.tradeRemainingLabel.textContent = 'Estimated Balance After Trade:';
             if (elements.tradeEstRemainingVal) elements.tradeEstRemainingVal.textContent = formatINR(remaining);
+
+            if (netTotal > engine.user.cash_balance) {
+                elements.tradeValidationBox.className = 'validation-box error';
+                elements.tradeValidationBox.style.display = 'block';
+                elements.tradeValidationBox.textContent = `Insufficient funds! You need ${formatINR(netTotal)} (including fees) but only have ${formatINR(engine.user.cash_balance)}.`;
+                elements.btnExecuteTrade.disabled = true;
+            } else {
+                elements.btnExecuteTrade.disabled = (qty <= 0);
+            }
         } else {
+            // Sell net proceeds
             netTotal = Number((grossVal - friction.netDeduction).toFixed(2));
             if (elements.tradeTotalLabel) elements.tradeTotalLabel.textContent = 'Net Cash Credited:';
             if (elements.tradeEstTotalVal) elements.tradeEstTotalVal.textContent = formatINR(netTotal);
             const newBal = Number((engine.user.cash_balance + netTotal).toFixed(2));
             if (elements.tradeRemainingLabel) elements.tradeRemainingLabel.textContent = 'Estimated Balance After Sale:';
             if (elements.tradeEstRemainingVal) elements.tradeEstRemainingVal.textContent = formatINR(newBal);
+
+            if (ownedQty === 0) {
+                elements.btnExecuteTrade.disabled = true;
+            }
         }
 
         // Position Sizing Analysis & Bias Guidance
@@ -901,53 +982,53 @@ document.addEventListener('DOMContentLoaded', () => {
                 elements.tradeSellPnLCard.style.display = 'none';
             }
         }
-
-        // Validation & Feedback
-        elements.tradeValidationBox.style.display = 'none';
-        elements.tradeValidationBox.className = 'validation-box';
-
-        if (currentTradeType === 'buy') {
-            if (netTotal > engine.user.cash_balance) {
-                elements.tradeValidationBox.className = 'validation-box error';
-                elements.tradeValidationBox.textContent = `Insufficient funds! You need ${formatINR(netTotal)} (including fees) but only have ${formatINR(engine.user.cash_balance)}.`;
-                elements.btnExecuteTrade.disabled = true;
-            } else {
-                elements.btnExecuteTrade.disabled = (qty <= 0);
-            }
-        } else {
-            // Sell
-            if (qty > ownedQty) {
-                elements.tradeValidationBox.className = 'validation-box error';
-                elements.tradeValidationBox.textContent = `Insufficient shares! You only hold ${ownedQty} share(s) of ${selectedStock.symbol}.`;
-                elements.btnExecuteTrade.disabled = true;
-            } else {
-                elements.btnExecuteTrade.disabled = (qty <= 0 || ownedQty === 0);
-            }
-        }
     }
 
     elements.tradeBuyTab.addEventListener('click', () => setTradeTab('buy'));
     elements.tradeSellTab.addEventListener('click', () => setTradeTab('sell'));
-    elements.tradeQuantityInput.addEventListener('input', updateTradeCalculations);
+    
+    // Bind input and change events to strictly enforce limits on typing/pasting
+    ['input', 'change', 'keyup'].forEach(evt => {
+        elements.tradeQuantityInput.addEventListener(evt, () => {
+            if (currentTradeType === 'sell' && selectedStock) {
+                const holding = engine.getHolding(selectedStock.symbol);
+                const ownedQty = holding ? holding.quantity : 0;
+                let val = parseInt(elements.tradeQuantityInput.value, 10);
+                if (val > ownedQty) {
+                    elements.tradeQuantityInput.value = ownedQty;
+                }
+            }
+            updateTradeCalculations();
+        });
+    });
 
     // Quick quantity chips
     document.querySelectorAll('.qty-chip').forEach(chip => {
         chip.addEventListener('click', () => {
             const val = chip.dataset.val;
             if (!selectedStock) return;
+            const holding = engine.getHolding(selectedStock.symbol);
+            const ownedQty = holding ? holding.quantity : 0;
 
             if (val === 'max') {
                 if (currentTradeType === 'buy') {
                     const maxAffordable = Math.floor(engine.user.cash_balance / selectedStock.price);
                     elements.tradeQuantityInput.value = Math.max(1, maxAffordable);
                 } else {
-                    const holding = engine.getHolding(selectedStock.symbol);
-                    elements.tradeQuantityInput.value = holding ? holding.quantity : 0;
+                    elements.tradeQuantityInput.value = ownedQty;
                 }
             } else {
                 const add = parseInt(val, 10);
                 const current = parseInt(elements.tradeQuantityInput.value, 10) || 0;
-                elements.tradeQuantityInput.value = Math.max(1, current + add);
+                if (currentTradeType === 'sell') {
+                    if (ownedQty === 0) {
+                        elements.tradeQuantityInput.value = 0;
+                    } else {
+                        elements.tradeQuantityInput.value = Math.min(ownedQty, Math.max(1, current + add));
+                    }
+                } else {
+                    elements.tradeQuantityInput.value = Math.max(1, current + add);
+                }
             }
             updateTradeCalculations();
         });
@@ -960,6 +1041,18 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!qty || qty <= 0) {
             showToast('Invalid Quantity', 'Please enter a valid number of shares.', 'error');
             return;
+        }
+
+        // Strict client-side check on sell limit
+        if (currentTradeType === 'sell') {
+            const holding = engine.getHolding(selectedStock.symbol);
+            const ownedQty = holding ? holding.quantity : 0;
+            if (qty > ownedQty) {
+                showToast('Limit Exceeded', `You only hold ${ownedQty} share(s) of ${selectedStock.symbol}.`, 'error');
+                elements.tradeQuantityInput.value = ownedQty;
+                updateTradeCalculations();
+                return;
+            }
         }
 
         elements.btnExecuteTrade.disabled = true;
@@ -981,6 +1074,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             showToast('Order Rejected', result.message, 'error');
             elements.tradeValidationBox.className = 'validation-box error';
+            elements.tradeValidationBox.style.display = 'block';
             elements.tradeValidationBox.textContent = result.message;
         }
     });
@@ -1117,9 +1211,46 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     let authMode = 'login'; // 'login' | 'register'
 
+    function renderSavedAccountsChips() {
+        const container = document.getElementById('savedAccountsContainer');
+        const list = document.getElementById('savedAccountsList');
+        if (!container || !list) return;
+
+        engine.loadUsers();
+        const accounts = Object.values(engine.users);
+        if (accounts.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        list.innerHTML = accounts.map(acc => {
+            const isCurrent = (engine.currentUsername === acc.username.toLowerCase());
+            return `
+                <button type="button" class="btn btn-sm" style="font-size:11px; padding:3px 9px; border-radius:14px; background:${isCurrent ? 'rgba(79,70,229,0.35)' : 'rgba(255,255,255,0.06)'}; border:1px solid ${isCurrent ? '#6366f1' : 'var(--border-color)'}; color:var(--text-primary); cursor:pointer;" data-account-user="${acc.username}">
+                    👤 ${acc.name || acc.username} ${isCurrent ? '✓' : ''}
+                </button>
+            `;
+        }).join('');
+
+        list.querySelectorAll('button[data-account-user]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const u = btn.dataset.accountUser;
+                if (elements.authUsername) elements.authUsername.value = u;
+                const userObj = engine.users[u.toLowerCase()];
+                if (userObj && userObj.password && elements.authPassword) {
+                    elements.authPassword.value = userObj.password;
+                }
+                if (elements.authValidationBox) elements.authValidationBox.style.display = 'none';
+            });
+        });
+    }
+
     function openAuthModal(mode = 'login') {
         authMode = mode;
         setAuthTab(mode);
+        renderSavedAccountsChips();
+
         if (elements.authValidationBox) {
             elements.authValidationBox.style.display = 'none';
             elements.authValidationBox.className = 'validation-box';
@@ -1131,6 +1262,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (elements.authModal) {
             elements.authModal.classList.add('open');
             if (elements.authUsername) elements.authUsername.focus();
+        }
+
+        // Pull latest registered accounts from Firebase Realtime Database
+        if (typeof engine.syncCloudUsers === 'function') {
+            engine.syncCloudUsers().then(() => {
+                renderSavedAccountsChips();
+            }).catch(() => {});
         }
     }
 
@@ -1150,14 +1288,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (elements.authNameGroup) elements.authNameGroup.style.display = 'none';
             if (elements.btnSubmitAuth) elements.btnSubmitAuth.textContent = 'Sign In to Stockverse';
             if (elements.authHint) {
-                elements.authHint.innerHTML = '🔑 <strong>Default Account:</strong> Username: <code>trader</code> | Password: <code>123</code><br>Or switch tab to create your own account!';
+                elements.authHint.innerHTML = '🔑 <strong>Default Account:</strong> Username: <code>trader</code> | Password: <code>123</code><br>Or sign in with any account created on Laptop or Mobile (Synced via Cloud)!';
             }
         } else {
             if (elements.authModalTitle) elements.authModalTitle.textContent = 'Create New Trading Account';
             if (elements.authNameGroup) elements.authNameGroup.style.display = 'block';
             if (elements.btnSubmitAuth) elements.btnSubmitAuth.textContent = 'Create Account (₹1,00,000 Capital)';
             if (elements.authHint) {
-                elements.authHint.innerHTML = '🎁 <strong>Instant Virtual Capital:</strong> New accounts receive <strong>₹1,00,000.00</strong> to trade risk-free!';
+                elements.authHint.innerHTML = '🎁 <strong>Instant Virtual Capital:</strong> New accounts receive <strong>₹1,00,000.00</strong> and sync across all devices via Cloud!';
             }
         }
     }
@@ -1185,34 +1323,146 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Submit Auth Form
+    // Submit Auth Form (Async with Firebase Realtime Database)
     if (elements.btnSubmitAuth) {
-        elements.btnSubmitAuth.addEventListener('click', () => {
+        elements.btnSubmitAuth.addEventListener('click', async () => {
             const username = elements.authUsername ? elements.authUsername.value.trim() : '';
             const password = elements.authPassword ? elements.authPassword.value.trim() : '';
             const fullName = elements.authFullName ? elements.authFullName.value.trim() : '';
 
-            let result;
-            if (authMode === 'login') {
-                result = engine.login(username, password);
-            } else {
-                result = engine.register(username, fullName, password);
-            }
+            const origText = elements.btnSubmitAuth.innerHTML;
+            elements.btnSubmitAuth.disabled = true;
+            elements.btnSubmitAuth.innerHTML = `<span>⏳ Verifying Account...</span>`;
+            if (elements.authValidationBox) elements.authValidationBox.style.display = 'none';
 
-            if (result.success) {
-                showToast(
-                    authMode === 'login' ? 'Signed In' : 'Account Created',
-                    result.message,
-                    'success'
-                );
+            try {
+                let result;
+                if (authMode === 'login') {
+                    result = await engine.login(username, password);
+                } else {
+                    result = await engine.register(username, fullName, password);
+                }
+
+                if (result.success) {
+                    showToast(
+                        authMode === 'login' ? 'Signed In' : 'Account Created',
+                        result.message,
+                        'success'
+                    );
+                    closeAuthModal();
+                    renderAll();
+                } else {
+                    if (elements.authValidationBox) {
+                        elements.authValidationBox.className = 'validation-box error';
+                        elements.authValidationBox.style.display = 'block';
+
+                        if (result.notFound && authMode === 'login') {
+                            elements.authValidationBox.innerHTML = `
+                                <div style="margin-bottom:8px;">❌ User '<strong>${result.username}</strong>' does not exist on this device or cloud.</div>
+                                <button type="button" class="btn btn-sm btn-primary" id="btnQuickCreateFromLogin" style="width:100%; font-size:12px; padding:6px 10px;">
+                                    ➕ Register '${result.username}' with ₹1,00,000 Capital
+                                </button>
+                            `;
+                            const btnQuick = document.getElementById('btnQuickCreateFromLogin');
+                            if (btnQuick) {
+                                btnQuick.addEventListener('click', async () => {
+                                    btnQuick.disabled = true;
+                                    btnQuick.textContent = '⏳ Registering on Cloud...';
+                                    const regRes = await engine.register(result.username, result.username, password || '123');
+                                    if (regRes.success) {
+                                        showToast('Account Created', `Account '${result.username}' registered with ₹1,00,000 virtual capital!`, 'success');
+                                        closeAuthModal();
+                                        renderAll();
+                                    } else {
+                                        btnQuick.disabled = false;
+                                        elements.authValidationBox.textContent = regRes.message;
+                                    }
+                                });
+                            }
+                        } else {
+                            elements.authValidationBox.textContent = result.message;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Auth submit error:", err);
+                if (elements.authValidationBox) {
+                    elements.authValidationBox.className = 'validation-box error';
+                    elements.authValidationBox.style.display = 'block';
+                    elements.authValidationBox.textContent = 'Network or authentication error. Please try again.';
+                }
+            } finally {
+                elements.btnSubmitAuth.disabled = false;
+                elements.btnSubmitAuth.innerHTML = origText;
+            }
+        });
+    }
+
+    // Submit on Enter key press in auth inputs
+    [elements.authUsername, elements.authPassword, elements.authFullName].forEach(inp => {
+        if (inp) {
+            inp.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (elements.btnSubmitAuth && !elements.btnSubmitAuth.disabled) {
+                        elements.btnSubmitAuth.click();
+                    }
+                }
+            });
+        }
+    });
+
+    // Mobile / Cross-Device Sync Event Handlers
+    const btnCopySyncLink = document.getElementById('btnCopySyncLink');
+    if (btnCopySyncLink) {
+        btnCopySyncLink.addEventListener('click', () => {
+            const payload = engine.getAccountSyncPayload();
+            if (!payload) {
+                showToast('No Active Account', 'Please sign in to an account first to sync.', 'error');
+                return;
+            }
+            const base = window.location.origin + window.location.pathname;
+            const syncUrl = `${base}?sync=${payload}`;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(syncUrl).then(() => {
+                    showToast('📱 Mobile Sync Link Copied!', 'Send or open this link on your mobile phone to instantly transfer your account.', 'success', 8000);
+                }).catch(() => {
+                    prompt('Copy your Mobile Sync Link:', syncUrl);
+                });
+            } else {
+                prompt('Copy your Mobile Sync Link:', syncUrl);
+            }
+        });
+    }
+
+    const btnToggleImport = document.getElementById('btnToggleImport');
+    const importBox = document.getElementById('importAccountBox');
+    if (btnToggleImport && importBox) {
+        btnToggleImport.addEventListener('click', () => {
+            importBox.style.display = importBox.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+
+    const btnDoImportSync = document.getElementById('btnDoImportSync');
+    const importInput = document.getElementById('importSyncKeyInput');
+    if (btnDoImportSync && importInput) {
+        btnDoImportSync.addEventListener('click', () => {
+            let val = importInput.value.trim();
+            if (!val) {
+                showToast('Empty Input', 'Please paste a valid sync link or code.', 'error');
+                return;
+            }
+            if (val.includes('sync=')) {
+                const match = val.match(/sync=([^&]+)/);
+                if (match) val = match[1];
+            }
+            const res = engine.importAccountPayload(val);
+            if (res.success) {
+                showToast('Account Imported', res.message, 'success', 6000);
                 closeAuthModal();
                 renderAll();
             } else {
-                if (elements.authValidationBox) {
-                    elements.authValidationBox.className = 'validation-box error';
-                    elements.authValidationBox.textContent = result.message;
-                    elements.authValidationBox.style.display = 'block';
-                }
+                showToast('Import Failed', res.message, 'error');
             }
         });
     }
@@ -1289,8 +1539,26 @@ document.addEventListener('DOMContentLoaded', () => {
     populateSectorFilter();
     renderAll();
 
-    // URL parameters hook for view & modal direct access
+    // URL parameters hook for view, modal & cross-device account sync
     const urlParams = new URLSearchParams(window.location.search);
+    
+    // Check for incoming cross-device mobile/laptop sync link
+    const syncParam = urlParams.get('sync') || urlParams.get('sync_user');
+    if (syncParam) {
+        const syncResult = engine.importAccountPayload(syncParam);
+        if (syncResult.success) {
+            showToast('📱 Device Sync Successful', syncResult.message, 'success', 8000);
+            renderAll();
+            // Clean URL so user doesn't re-import on every refresh
+            try {
+                const cleanUrl = window.location.origin + window.location.pathname;
+                window.history.replaceState({}, document.title, cleanUrl);
+            } catch (e) {}
+        } else {
+            showToast('Sync Error', syncResult.message, 'error');
+        }
+    }
+
     if (urlParams.get('seed') === 'true') {
         if (!engine.user.holdings || engine.user.holdings.length === 0) {
             engine.buyStock('RELIANCE', 10);

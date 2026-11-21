@@ -15,6 +15,8 @@ class TradingEngine {
         this.STORAGE_KEY = 'STOCKVERSE_MARKET_STATE_V2';
         this.USERS_KEY = 'STOCKVERSE_USERS_V2';
         this.SESSION_KEY = 'STOCKVERSE_ACTIVE_SESSION_V2';
+        this.FIREBASE_BASE_URL = 'https://stockverse-fc068-default-rtdb.firebaseio.com';
+        this.FIREBASE_USERS_URL = `${this.FIREBASE_BASE_URL}/users`;
         
         this.tradingDay = 1;
         this.stocks = [];
@@ -24,6 +26,11 @@ class TradingEngine {
         this.marketOpen = true;
 
         this.init();
+    }
+
+    cleanKey(username) {
+        if (!username) return '';
+        return String(username).trim().toLowerCase().replace(/[.#$\[\]\/]/g, '_');
     }
 
     init() {
@@ -65,6 +72,9 @@ class TradingEngine {
         }
 
         this.recalculatePortfolio();
+
+        // 5. Cloud Sync in background: fetch all registered users from Firebase
+        this.syncCloudUsers().catch(e => console.warn('[FirebaseSync] Init sync notice:', e));
     }
 
     // Active User Getter
@@ -86,9 +96,118 @@ class TradingEngine {
         return this.user.transactions || [];
     }
 
-    // Authentication Methods
-    login(username, password) {
-        username = (username || '').trim().toLowerCase();
+    // Firebase Realtime Database Cloud Sync Methods
+    async syncCloudUsers() {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(`${this.FIREBASE_USERS_URL}.json`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!res.ok) return false;
+            const cloudUsers = await res.json();
+            if (!cloudUsers || typeof cloudUsers !== 'object') return false;
+
+            let updated = false;
+            Object.keys(cloudUsers).forEach(k => {
+                const cu = cloudUsers[k];
+                if (cu && cu.username) {
+                    const key = this.cleanKey(cu.username);
+                    if (!this.users[key]) {
+                        this.users[key] = {
+                            username: key,
+                            name: cu.name || key,
+                            password: cu.password || '123',
+                            cash_balance: Number(cu.cash_balance) || INITIAL_CAPITAL,
+                            net_worth: Number(cu.net_worth) || INITIAL_CAPITAL,
+                            holdings: Array.isArray(cu.holdings) ? cu.holdings : [],
+                            transactions: Array.isArray(cu.transactions) ? cu.transactions : []
+                        };
+                        updated = true;
+                    }
+                }
+            });
+
+            if (updated) {
+                this.saveUsers();
+            }
+            return true;
+        } catch (e) {
+            console.warn('[FirebaseSync] Could not sync cloud users:', e.message);
+            return false;
+        }
+    }
+
+    async fetchUserFromCloud(username) {
+        try {
+            const key = this.cleanKey(username);
+            if (!key) return null;
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+            const res = await fetch(`${this.FIREBASE_USERS_URL}/${key}.json`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data && data.username) {
+                return data;
+            }
+            return null;
+        } catch (e) {
+            console.warn('[FirebaseSync] Error fetching user from cloud:', e.message);
+            return null;
+        }
+    }
+
+    async pushUserToCloud(username = null) {
+        try {
+            const key = this.cleanKey(username || this.currentUsername);
+            if (!key || !this.users[key]) return false;
+
+            const targetUser = this.users[key];
+            const payload = {
+                username: key,
+                name: targetUser.name || key,
+                password: targetUser.password || '123',
+                cash_balance: Number(targetUser.cash_balance) || INITIAL_CAPITAL,
+                net_worth: Number(targetUser.net_worth) || INITIAL_CAPITAL,
+                holdings: Array.isArray(targetUser.holdings) ? targetUser.holdings : [],
+                transactions: Array.isArray(targetUser.transactions) ? targetUser.transactions : [],
+                lastUpdated: new Date().toISOString()
+            };
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+            const res = await fetch(`${this.FIREBASE_USERS_URL}/${key}.json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                console.log(`[FirebaseSync] Account '${key}' backed up to Firebase.`);
+                return true;
+            }
+            return false;
+        } catch (e) {
+            console.warn('[FirebaseSync] Cloud push failed:', e.message);
+            return false;
+        }
+    }
+
+    // Authentication Methods (Asynchronous with Realtime Cloud Sync)
+    async login(username, password) {
+        this.loadUsers();
+
+        username = (username || '').trim();
         password = (password || '').trim();
 
         if (!username) {
@@ -98,22 +217,73 @@ class TradingEngine {
             return { success: false, message: 'Please enter your password.' };
         }
 
-        const account = this.users[username];
+        const key = this.cleanKey(username);
+        let account = this.users[key];
+
+        // 1. If not found locally, try fetching directly from Firebase Cloud
+        if (!account) {
+            const cloudUser = await this.fetchUserFromCloud(key);
+            if (cloudUser) {
+                this.users[key] = {
+                    username: key,
+                    name: cloudUser.name || key,
+                    password: cloudUser.password || '123',
+                    cash_balance: Number(cloudUser.cash_balance) || INITIAL_CAPITAL,
+                    net_worth: Number(cloudUser.net_worth) || INITIAL_CAPITAL,
+                    holdings: Array.isArray(cloudUser.holdings) ? cloudUser.holdings : [],
+                    transactions: Array.isArray(cloudUser.transactions) ? cloudUser.transactions : []
+                };
+                this.saveUsers();
+                account = this.users[key];
+            }
+        }
+
+        // 2. If still not found anywhere
         if (!account) {
             return {
                 success: false,
-                message: `User '${username}' does not exist. Click 'Create Account' to register!`
+                notFound: true,
+                username: username,
+                message: `User '${username}' does not exist on this device or in the cloud. Click 'Create Account' below to register with ₹1,00,000 capital!`
             };
         }
 
+        // 3. Verify password
         if (account.password !== password) {
-            return { success: false, message: 'Incorrect password! Please try again.' };
+            // Re-check cloud in case password was changed on another device
+            const cloudUser = await this.fetchUserFromCloud(key);
+            if (cloudUser && cloudUser.password === password) {
+                this.users[key] = {
+                    ...this.users[key],
+                    password: cloudUser.password,
+                    cash_balance: Number(cloudUser.cash_balance) || this.users[key].cash_balance,
+                    net_worth: Number(cloudUser.net_worth) || this.users[key].net_worth,
+                    holdings: Array.isArray(cloudUser.holdings) ? cloudUser.holdings : this.users[key].holdings,
+                    transactions: Array.isArray(cloudUser.transactions) ? cloudUser.transactions : this.users[key].transactions
+                };
+                this.saveUsers();
+                account = this.users[key];
+            } else {
+                return { success: false, message: 'Incorrect password! Please try again.' };
+            }
         }
 
-        this.currentUsername = username;
-        localStorage.setItem(this.SESSION_KEY, username);
+        this.currentUsername = key;
+        localStorage.setItem(this.SESSION_KEY, key);
         this.recalculatePortfolio();
         this.notify('auth_login', { user: this.user });
+
+        // Background update if cloud has newer balance/holdings
+        this.fetchUserFromCloud(key).then(cloudUser => {
+            if (cloudUser && cloudUser.lastUpdated) {
+                this.users[key].cash_balance = Number(cloudUser.cash_balance);
+                this.users[key].net_worth = Number(cloudUser.net_worth);
+                this.users[key].holdings = Array.isArray(cloudUser.holdings) ? cloudUser.holdings : [];
+                this.users[key].transactions = Array.isArray(cloudUser.transactions) ? cloudUser.transactions : [];
+                this.saveUsers();
+                this.recalculatePortfolio();
+            }
+        }).catch(() => {});
 
         return {
             success: true,
@@ -122,8 +292,10 @@ class TradingEngine {
         };
     }
 
-    register(username, name, password) {
-        username = (username || '').trim().toLowerCase();
+    async register(username, name, password) {
+        this.loadUsers();
+
+        username = (username || '').trim();
         name = (name || '').trim() || username;
         password = (password || '').trim();
 
@@ -134,16 +306,28 @@ class TradingEngine {
             return { success: false, message: 'Password must be at least 3 characters long.' };
         }
 
-        if (this.users[username]) {
+        const key = this.cleanKey(username);
+
+        // 1. Check local
+        if (this.users[key]) {
             return {
                 success: false,
-                message: `Username '${username}' is already taken. Please choose another or login.`
+                message: `Username '${username}' is already taken on this device. Please sign in or choose another.`
             };
         }
 
-        // Create new account with initial ₹1,00,000 capital
-        this.users[username] = {
-            username: username,
+        // 2. Check cloud
+        const cloudUser = await this.fetchUserFromCloud(key);
+        if (cloudUser) {
+            return {
+                success: false,
+                message: `Username '${username}' is already registered on Cloud! Please sign in with your password.`
+            };
+        }
+
+        // 3. Create new user account with ₹1,00,000 capital
+        this.users[key] = {
+            username: key,
             name: name,
             password: password,
             cash_balance: INITIAL_CAPITAL,
@@ -153,16 +337,78 @@ class TradingEngine {
         };
 
         this.saveUsers();
-        this.currentUsername = username;
-        localStorage.setItem(this.SESSION_KEY, username);
+        this.currentUsername = key;
+        localStorage.setItem(this.SESSION_KEY, key);
         this.recalculatePortfolio();
         this.notify('auth_register', { user: this.user });
+
+        // 4. Save to Firebase Cloud
+        await this.pushUserToCloud(key);
 
         return {
             success: true,
             message: `Account created successfully with ₹1,00,000 virtual capital! Welcome, ${name}.`,
             user: this.user
         };
+    }
+
+    // Export current or specified user state as a compact Base64 sync string
+    getAccountSyncPayload(username = null) {
+        this.loadUsers();
+        const targetUser = username 
+            ? this.users[username.toLowerCase()] 
+            : this.user;
+        if (!targetUser || !targetUser.username) return null;
+        try {
+            const data = JSON.stringify(targetUser);
+            return btoa(unescape(encodeURIComponent(data)));
+        } catch (e) {
+            console.error("Failed to generate sync payload:", e);
+            return null;
+        }
+    }
+
+    // Import an account state from a Base64 sync string (for mobile / cross-device transfer)
+    importAccountPayload(payloadStr) {
+        if (!payloadStr || typeof payloadStr !== 'string') {
+            return { success: false, message: 'Invalid or empty sync key.' };
+        }
+        try {
+            const jsonStr = decodeURIComponent(escape(atob(payloadStr.trim())));
+            const userData = JSON.parse(jsonStr);
+
+            if (!userData || !userData.username) {
+                return { success: false, message: 'Corrupted account data structure.' };
+            }
+
+            this.loadUsers();
+            const key = userData.username.toLowerCase();
+            this.users[key] = {
+                username: key,
+                name: userData.name || key,
+                password: userData.password || '123',
+                cash_balance: Number(userData.cash_balance) || INITIAL_CAPITAL,
+                net_worth: Number(userData.net_worth) || INITIAL_CAPITAL,
+                holdings: Array.isArray(userData.holdings) ? userData.holdings : [],
+                transactions: Array.isArray(userData.transactions) ? userData.transactions : []
+            };
+
+            this.saveUsers();
+            this.currentUsername = key;
+            localStorage.setItem(this.SESSION_KEY, key);
+            this.recalculatePortfolio();
+            this.pushUserToCloud(key).catch(() => {});
+            this.notify('auth_import', { user: this.user });
+
+            return {
+                success: true,
+                message: `Account '${userData.name || key}' successfully imported onto this device! Available Capital: ₹${Number(this.user.cash_balance).toLocaleString('en-IN')}`,
+                user: this.user
+            };
+        } catch (e) {
+            console.error("Account import error:", e);
+            return { success: false, message: 'Invalid sync code format. Please check the copied link.' };
+        }
     }
 
     logout() {
@@ -183,6 +429,9 @@ class TradingEngine {
     notify(eventType = 'update', payload = {}) {
         this.saveMarketState();
         this.saveUsers();
+        if (this.currentUsername && this.users[this.currentUsername]) {
+            this.pushUserToCloud(this.currentUsername).catch(() => {});
+        }
         this.listeners.forEach(fn => fn(eventType, payload));
     }
 
@@ -210,17 +459,35 @@ class TradingEngine {
 
     loadUsers() {
         try {
-            const raw = localStorage.getItem(this.USERS_KEY);
+            const raw = localStorage.getItem(this.USERS_KEY) || 
+                        localStorage.getItem('STOCKVERSE_USERS_BACKUP') ||
+                        sessionStorage.getItem(this.USERS_KEY);
             this.users = raw ? JSON.parse(raw) : {};
         } catch (e) {
             console.error("Failed to load users:", e);
             this.users = {};
         }
+
+        // Guarantee Default Demo Trader account always exists
+        if (!this.users['trader']) {
+            this.users['trader'] = {
+                username: 'trader',
+                name: 'Demo Trader',
+                password: '123',
+                cash_balance: INITIAL_CAPITAL,
+                net_worth: INITIAL_CAPITAL,
+                holdings: [],
+                transactions: []
+            };
+        }
     }
 
     saveUsers() {
         try {
-            localStorage.setItem(this.USERS_KEY, JSON.stringify(this.users));
+            const serialized = JSON.stringify(this.users);
+            localStorage.setItem(this.USERS_KEY, serialized);
+            localStorage.setItem('STOCKVERSE_USERS_BACKUP', serialized);
+            sessionStorage.setItem(this.USERS_KEY, serialized);
         } catch (e) {
             console.error("Failed to save users:", e);
         }
